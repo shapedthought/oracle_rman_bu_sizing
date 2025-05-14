@@ -1,0 +1,7 @@
+[project]
+name = "oracle_rman_db_sizing"
+version = "0.1.0"
+description = "Experimental tool to size Oracle RMAN backups"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
