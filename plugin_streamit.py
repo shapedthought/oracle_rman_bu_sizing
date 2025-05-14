@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from typing import Dict
 
 st.set_page_config(layout="wide", page_title="Oracle RMAN Backup Sizing")
@@ -86,7 +87,7 @@ def generate_results_dataframe(
     if use_compound_growth:
         db_sizes: np.ndarray = db_size_gb * ((1 + monthly_growth_rate) ** time)
     else:
-        db_sizes = db_size_gb + (db_size_gb * annual_growth_rate) * (time / 12)
+        db_sizes: np.ndarray = db_size_gb + (db_size_gb * annual_growth_rate) * (time / 12)
 
     full_backup_sizes: np.ndarray = db_sizes * compression_ratio
     incremental_backup_sizes: np.ndarray = db_sizes * incremental_change_rate * compression_ratio
@@ -94,7 +95,9 @@ def generate_results_dataframe(
     weekly_fulls: np.ndarray = weekly_retention * full_backup_sizes
     monthly_fulls: np.ndarray = monthly_retention * full_backup_sizes
     yearly_fulls: np.ndarray = yearly_retention * full_backup_sizes
-    daily_incrementals: np.ndarray = daily_retention * incremental_backup_sizes
+
+    incremental_retention = math.floor(daily_retention / 7) * 6
+    daily_incrementals: np.ndarray = incremental_retention * incremental_backup_sizes
     
     logs_growth: np.ndarray = log_gen_gb_per_day * compression_ratio * max_log_days
     if use_compound_growth:
@@ -121,9 +124,9 @@ def generate_results_dataframe(
 st.sidebar.title("Oracle RMAN Backup Sizing")
 
 db_size_gb: float = st.sidebar.number_input("Database Size (GB)", value=1000, min_value=1)
-annual_growth_rate: float = st.sidebar.slider("Annual Growth Rate", 0.0, 1.0, 0.2, 0.01, format="%.2f")
-compression_ratio: float = st.sidebar.slider("Compression Ratio", 0.1, 1.0, 0.5, 0.05)
-incremental_change_rate: float = st.sidebar.slider("Incremental Change Rate", 0.01, 0.5, 0.1, 0.01)
+annual_growth_rate: float = st.sidebar.slider("Annual Growth Rate", 0, 100, 20, 1) / 100
+compression_ratio: float = ( 1 - (st.sidebar.slider("Compression Ratio", 0, 99, 50, 1) / 100)) 
+incremental_change_rate: float = st.sidebar.slider("Incremental Change Rate", 0, 99, 50, 1) / 100
 growth_projection_years: int = st.sidebar.slider("Growth Projection (years)", 1, 10, 3)
 log_gen_gb_per_day: float = st.sidebar.number_input("Log Generation per Day (GB)", value=50, min_value=1)
 daily_retention: int = st.sidebar.number_input("Daily Retention (days)", value=30, min_value=0)
@@ -171,23 +174,28 @@ for col in df_display.columns:
 # Main content
 st.title("Oracle RMAN Backup Storage Requirements")
 
-st.subheader(f"Storage Growth Over Time ({unit})")
-st.dataframe(df_display, use_container_width=True, height=400)
+# Create two columns for table and chart
+table_col, chart_col = st.columns(2)
 
-st.subheader(f"Storage Growth Visualization ({unit})")
-fig, ax = plt.subplots(figsize=(10, 6))
-plt.plot(df['Month'], df['Weekly Full Backups'] * conversion_factor, label='Weekly Full Backups', color='blue')
-plt.plot(df['Month'], df['Monthly Full Backups'] * conversion_factor, label='Monthly Full Backups', color='purple')
-plt.plot(df['Month'], df['Yearly Full Backups'] * conversion_factor, label='Yearly Full Backups', color='brown')
-plt.plot(df['Month'], df['Daily Incrementals'] * conversion_factor, label='Daily Incrementals', color='green')
-plt.plot(df['Month'], df['Logs'] * conversion_factor, label='Logs', color='orange')
-plt.plot(df['Month'], df['Total Capacity'] * conversion_factor, label='Total Capacity', color='red', linewidth=2)
-plt.xlabel('Months')
-plt.ylabel(f'Storage Size ({unit})')
-plt.title(f'Oracle RMAN Backup Storage Growth Over Time ({unit})')
-plt.legend()
-plt.grid(True)
-st.pyplot(fig)
+with table_col:
+    st.subheader(f"Storage Growth Over Time ({unit})")
+    st.dataframe(df_display, use_container_width=True, height=400)
+
+with chart_col:
+    st.subheader(f"Storage Growth Visualization ({unit})")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plt.plot(df['Month'], df['Weekly Full Backups'] * conversion_factor, label='Weekly Full Backups', color='blue')
+    plt.plot(df['Month'], df['Monthly Full Backups'] * conversion_factor, label='Monthly Full Backups', color='purple')
+    plt.plot(df['Month'], df['Yearly Full Backups'] * conversion_factor, label='Yearly Full Backups', color='brown')
+    plt.plot(df['Month'], df['Daily Incrementals'] * conversion_factor, label='Daily Incrementals', color='green')
+    plt.plot(df['Month'], df['Logs'] * conversion_factor, label='Logs', color='orange')
+    plt.plot(df['Month'], df['Total Capacity'] * conversion_factor, label='Total Capacity', color='red', linewidth=2)
+    plt.xlabel('Months')
+    plt.ylabel(f'Storage Size ({unit})')
+    plt.title(f'Oracle RMAN Backup Storage Growth Over Time ({unit})')
+    plt.legend()
+    plt.grid(True)
+    st.pyplot(fig)
 
 # Summary table at the bottom
 st.subheader(f"Summary of Current Storage Requirements ({unit})")
@@ -214,7 +222,7 @@ summary_df: pd.DataFrame = pd.DataFrame(summary_data)
 st.table(summary_df)
 
 # Veeam Repository sizing recommendation
-st.subheader("Veeam Repository Sizing Recommendation")
+st.subheader("Repository Sizing Recommendation")
 full_backup_channels: int = 3 * 4  # 3 parallel backups with 4 channels each
 log_shipping_channels: int = 7     # 7 systems shipping logs with 1 channel each
 total_channels: int = full_backup_channels + log_shipping_channels
