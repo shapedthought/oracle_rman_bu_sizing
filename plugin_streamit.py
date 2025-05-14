@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from typing import Dict
 
 st.set_page_config(layout="wide", page_title="Oracle RMAN Backup Sizing")
 
@@ -18,8 +19,8 @@ def calculate_backup_sizes(
     compression_ratio: float = 0.5,
     incremental_change_rate: float = 0.1,
     use_compound_growth: bool = True
-) -> dict:
-    requirements = {}
+) -> Dict[str, float]:
+    requirements: Dict[str, float] = {}
     requirements['full_backup_gb'] = db_size_gb * compression_ratio
     requirements['incremental_backup_gb'] = db_size_gb * incremental_change_rate * compression_ratio
     requirements['daily_incrementals_gb'] = daily_retention * requirements['incremental_backup_gb']
@@ -27,7 +28,7 @@ def calculate_backup_sizes(
     requirements['monthly_fulls_gb'] = monthly_retention * requirements['full_backup_gb']
     requirements['yearly_fulls_gb'] = yearly_retention * requirements['full_backup_gb']
 
-    max_log_days = max(
+    max_log_days: int = max(
         daily_retention,
         weekly_retention * 7,
         monthly_retention * 30,
@@ -46,7 +47,7 @@ def calculate_backup_sizes(
 
     if annual_growth_rate > 0 and growth_projection_years > 0:
         if use_compound_growth:
-            growth_factor = (1 + annual_growth_rate) ** growth_projection_years
+            growth_factor: float = (1 + annual_growth_rate) ** growth_projection_years
         else:
             growth_factor = 1 + annual_growth_rate * growth_projection_years
         requirements['projected_storage_gb'] = requirements['total_storage_gb'] * growth_factor
@@ -60,15 +61,22 @@ def calculate_backup_sizes(
     return requirements
 
 def generate_results_dataframe(
-    db_size_gb, annual_growth_rate, log_gen_gb_per_day,
-    daily_retention, weekly_retention, monthly_retention, yearly_retention,
-    compression_ratio, incremental_change_rate, growth_projection_years,
-    use_compound_growth
-):
-    months = growth_projection_years * 12
-    time = np.arange(1, months + 1)
-    monthly_growth_rate = (1 + annual_growth_rate) ** (1/12) - 1
-    max_log_days = max(
+    db_size_gb: float,
+    annual_growth_rate: float,
+    log_gen_gb_per_day: float,
+    daily_retention: int,
+    weekly_retention: int,
+    monthly_retention: int,
+    yearly_retention: int,
+    compression_ratio: float,
+    incremental_change_rate: float,
+    growth_projection_years: int,
+    use_compound_growth: bool
+) -> pd.DataFrame:
+    months: int = growth_projection_years * 12
+    time: np.ndarray = np.arange(1, months + 1)
+    monthly_growth_rate: float = (1 + annual_growth_rate) ** (1/12) - 1
+    max_log_days: int = max(
         daily_retention,
         weekly_retention * 7,
         monthly_retention * 30,
@@ -76,29 +84,29 @@ def generate_results_dataframe(
     )
 
     if use_compound_growth:
-        db_sizes = db_size_gb * ((1 + monthly_growth_rate) ** time)
+        db_sizes: np.ndarray = db_size_gb * ((1 + monthly_growth_rate) ** time)
     else:
         db_sizes = db_size_gb + (db_size_gb * annual_growth_rate) * (time / 12)
 
-    full_backup_sizes = db_sizes * compression_ratio
-    incremental_backup_sizes = db_sizes * incremental_change_rate * compression_ratio
+    full_backup_sizes: np.ndarray = db_sizes * compression_ratio
+    incremental_backup_sizes: np.ndarray = db_sizes * incremental_change_rate * compression_ratio
 
-    weekly_fulls = weekly_retention * full_backup_sizes
-    monthly_fulls = monthly_retention * full_backup_sizes
-    yearly_fulls = yearly_retention * full_backup_sizes
-    daily_incrementals = daily_retention * incremental_backup_sizes
+    weekly_fulls: np.ndarray = weekly_retention * full_backup_sizes
+    monthly_fulls: np.ndarray = monthly_retention * full_backup_sizes
+    yearly_fulls: np.ndarray = yearly_retention * full_backup_sizes
+    daily_incrementals: np.ndarray = daily_retention * incremental_backup_sizes
     
-    logs_growth = log_gen_gb_per_day * compression_ratio * max_log_days
+    logs_growth: np.ndarray = log_gen_gb_per_day * compression_ratio * max_log_days
     if use_compound_growth:
         logs_growth = logs_growth * ((1 + monthly_growth_rate) ** time)
     else:
         logs_growth = logs_growth + (logs_growth * annual_growth_rate) * (time / 12)
 
-    total_capacity = (
+    total_capacity: np.ndarray = (
         weekly_fulls + monthly_fulls + yearly_fulls + daily_incrementals + logs_growth
     )
 
-    df = pd.DataFrame({
+    df: pd.DataFrame = pd.DataFrame({
         'Month': time,
         'Weekly Full Backups': weekly_fulls,
         'Monthly Full Backups': monthly_fulls,
@@ -112,19 +120,18 @@ def generate_results_dataframe(
 # Sidebar for inputs
 st.sidebar.title("Oracle RMAN Backup Sizing")
 
-db_size_gb = st.sidebar.number_input("Database Size (GB)", value=1000, min_value=1)
-annual_growth_rate = st.sidebar.slider("Annual Growth Rate", 0.0, 1.0, 0.2, 0.01, format="%.2f")
-compression_ratio = st.sidebar.slider("Compression Ratio", 0.1, 1.0, 0.5, 0.05)
-incremental_change_rate = st.sidebar.slider("Incremental Change Rate", 0.01, 0.5, 0.1, 0.01)
-growth_projection_years = st.sidebar.slider("Growth Projection (years)", 1, 10, 3)
-log_gen_gb_per_day = st.sidebar.number_input("Log Generation per Day (GB)", value=50, min_value=1)
-daily_retention = st.sidebar.number_input("Daily Retention (days)", value=30, min_value=0)
-weekly_retention = st.sidebar.number_input("Weekly Retention (weeks)", value=13, min_value=0)
-monthly_retention = st.sidebar.number_input("Monthly Retention (months)", value=12, min_value=0)
-yearly_retention = st.sidebar.number_input("Yearly Retention (years)", value=0, min_value=0)
+db_size_gb: float = st.sidebar.number_input("Database Size (GB)", value=1000, min_value=1)
+annual_growth_rate: float = st.sidebar.slider("Annual Growth Rate", 0.0, 1.0, 0.2, 0.01, format="%.2f")
+compression_ratio: float = st.sidebar.slider("Compression Ratio", 0.1, 1.0, 0.5, 0.05)
+incremental_change_rate: float = st.sidebar.slider("Incremental Change Rate", 0.01, 0.5, 0.1, 0.01)
+growth_projection_years: int = st.sidebar.slider("Growth Projection (years)", 1, 10, 3)
+log_gen_gb_per_day: float = st.sidebar.number_input("Log Generation per Day (GB)", value=50, min_value=1)
+daily_retention: int = st.sidebar.number_input("Daily Retention (days)", value=30, min_value=0)
+weekly_retention: int = st.sidebar.number_input("Weekly Retention (weeks)", value=13, min_value=0)
+monthly_retention: int = st.sidebar.number_input("Monthly Retention (months)", value=12, min_value=0)
+yearly_retention: int = st.sidebar.number_input("Yearly Retention (years)", value=0, min_value=0)
 
-
-max_retention = max(
+max_retention: int = max(
     math.ceil(daily_retention / 365),
     math.ceil(weekly_retention / 52),
     math.ceil(monthly_retention / 12),
@@ -133,16 +140,14 @@ max_retention = max(
 if max_retention > growth_projection_years:
     st.sidebar.warning("Retention periods exceed growth projection years. Please adjust your inputs.")
 
-
-
 # Main page toggles
-unit = st.radio("Select unit for display:", ("GB", "TB"), horizontal=True)
-conversion_factor = 1 if unit == "GB" else 1 / 1024
+unit: str = st.radio("Select unit for display:", ("GB", "TB"), horizontal=True)
+conversion_factor: float = 1 if unit == "GB" else 1 / 1024
 
-use_compound_growth = st.toggle("Use compound growth", value=True)
+use_compound_growth: bool = st.toggle("Use compound growth", value=True)
 
 # Calculate results
-results = calculate_backup_sizes(
+results: Dict[str, float] = calculate_backup_sizes(
     db_size_gb, annual_growth_rate, log_gen_gb_per_day,
     daily_retention, weekly_retention, monthly_retention, yearly_retention,
     growth_projection_years, compression_ratio, incremental_change_rate,
@@ -150,7 +155,7 @@ results = calculate_backup_sizes(
 )
 
 # Generate dataframe for visualization
-df = generate_results_dataframe(
+df: pd.DataFrame = generate_results_dataframe(
     db_size_gb, annual_growth_rate, log_gen_gb_per_day,
     daily_retention, weekly_retention, monthly_retention, yearly_retention,
     compression_ratio, incremental_change_rate, growth_projection_years,
@@ -158,7 +163,7 @@ df = generate_results_dataframe(
 )
 
 # Apply conversion to dataframe for display
-df_display = df.copy()
+df_display: pd.DataFrame = df.copy()
 for col in df_display.columns:
     if col != 'Month':
         df_display[col] = df_display[col] * conversion_factor
@@ -186,7 +191,7 @@ st.pyplot(fig)
 
 # Summary table at the bottom
 st.subheader(f"Summary of Current Storage Requirements ({unit})")
-summary_data = {
+summary_data: Dict[str, list] = {
     "Component": [
         "Single Full Backup", "Single Incremental Backup", "Daily Incrementals", 
         "Weekly Fulls", "Monthly Fulls", "Yearly Fulls", "Total Backup Storage", "Archived Logs Storage",
@@ -205,20 +210,20 @@ summary_data = {
         results['projected_storage_gb'] * conversion_factor
     ]
 }
-summary_df = pd.DataFrame(summary_data)
+summary_df: pd.DataFrame = pd.DataFrame(summary_data)
 st.table(summary_df)
 
 # Veeam Repository sizing recommendation
 st.subheader("Veeam Repository Sizing Recommendation")
-full_backup_channels = 3 * 4  # 3 parallel backups with 4 channels each
-log_shipping_channels = 7     # 7 systems shipping logs with 1 channel each
-total_channels = full_backup_channels + log_shipping_channels
+full_backup_channels: int = 3 * 4  # 3 parallel backups with 4 channels each
+log_shipping_channels: int = 7     # 7 systems shipping logs with 1 channel each
+total_channels: int = full_backup_channels + log_shipping_channels
 
-cpu_cores = max(1, total_channels // 5)  # 1 CPU core per 5 channels
-memory_gb = max(1, total_channels // 5)  # 1 GB RAM per 5 channels
-memory_with_headroom = memory_gb * 1.15
+cpu_cores: int = max(1, total_channels // 5)  # 1 CPU core per 5 channels
+memory_gb: int = max(1, total_channels // 5)  # 1 GB RAM per 5 channels
+memory_with_headroom: float = memory_gb * 1.15
 
-repo_data = {
+repo_data: Dict[str, list] = {
     "Resource": ["CPU Cores", "Memory", "Storage", "RMAN Compression", "Network"],
     "Recommendation": [
         f"{cpu_cores} cores (1 core per 5 channels)",
@@ -228,5 +233,5 @@ repo_data = {
         "Enable Jumbo Frames, 10 Gbps or better"
     ]
 }
-repo_df = pd.DataFrame(repo_data)
+repo_df: pd.DataFrame = pd.DataFrame(repo_data)
 st.table(repo_df)
